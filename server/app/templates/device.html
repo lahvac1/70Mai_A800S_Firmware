@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}{{ dev.name }}{% endblock %}
+{% block content %}
+{% set is_admin = user.role == 'admin' %}
+{% set here = '/devices/' ~ dev.id ~ '?' ~ (filters | urlencode) ~ '&page=' ~ page %}
+<h1>{{ dev.name }} <span class="badge {{ dev.status }}">{{ {'approved': 'schválená', 'pending': 'čeká na schválení', 'blocked': 'zablokovaná'}[dev.status] }}</span></h1>
+<p class="muted mono">{{ dev.uid }} · registrována {{ dev.created_at | dt }} · uploader v{{ dev.uploader_version or '?' }}</p>
+
+{% if is_admin and dev.status != 'approved' %}
+<form method="post" action="/devices/{{ dev.id }}/status" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="status" value="approved">
+  <input type="hidden" name="next" value="/devices/{{ dev.id }}">
+  <button>Schválit kameru</button>
+</form>
+{% endif %}
+
+<div class="grid two">
+  <section class="card">
+    <h2>Stav</h2>
+    <dl>
+      <dt>Naposledy online</dt><dd>{{ dev.last_seen | dt }} ({{ dev.last_seen | ago }})</dd>
+      <dt>IP adresa</dt><dd>{{ dev.last_ip or '–' }}{% if dev.lan_ip %} · v síti {{ dev.lan_ip }}{% endif %}</dd>
+      {% if dev.lan_ip and dev.local_web_port %}
+      <dt>Videa v síti</dt><dd><a href="http://{{ dev.lan_ip }}:{{ dev.local_web_port }}/" target="_blank" rel="noopener">http://{{ dev.lan_ip }}:{{ dev.local_web_port }}/</a>
+        <span class="muted small">(jen ze stejné Wi-Fi)</span></dd>
+      {% endif %}
+      <dt>Wi-Fi režim</dt><dd>{{ dev.wifi_mode or '–' }}</dd>
+      <dt>AP kamery</dt>
+      <dd>{% if dev.ap_ssid %}<span class="mono">{{ dev.ap_ssid }}</span>{% else %}–{% endif %}
+        {% if dev.ap_pass %}· heslo <span class="mono secret" data-secret="{{ dev.ap_pass }}">••••••••</span>
+          <button type="button" class="link" onclick="const s=this.previousElementSibling; const shown=s.textContent===s.dataset.secret; s.textContent=shown?'••••••••':s.dataset.secret; this.textContent=shown?'zobrazit':'skrýt'">zobrazit</button>
+        {% endif %}</dd>
+      <dt>Čas v kameře</dt><dd>{{ dev.camera_time | dt }}</dd>
+      <dt>SD karta</dt><dd>{% if dev.sd_total_kb %}volno {{ (dev.sd_free_kb * 1024) | size }} z {{ (dev.sd_total_kb * 1024) | size }}{% else %}–{% endif %}</dd>
+    </dl>
+    {% if is_admin and dev.status == 'approved' %}
+    <form method="post" action="/devices/{{ dev.id }}/ap" class="row" style="margin-top:12px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="secondary">Přepnout do AP na</button>
+      <input type="number" name="minutes" value="30" min="5" max="1440" style="width:5em"> min
+    </form>
+    <p class="muted small">Pro stažení telefonem na místě. Pak se kamera sama vrátí na domácí Wi-Fi
+      (až nebude připojený žádný telefon).</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Nastavení kamery</h2>
+    <form method="post" action="/devices/{{ dev.id }}/config" class="cfg">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset {% if not is_admin %}disabled{% endif %}>
+      <label>Název <input name="name" value="{{ dev.name }}" maxlength="64"></label>
+      <label class="check"><input type="checkbox" name="upload_enabled" {% if cfg.upload_enabled %}checked{% endif %}> Automatický upload zapnutý</label>
+      <div class="folders">Automaticky nahrávat složky:
+        {% for f in CAMERA_FOLDERS %}
+        <label class="check"><input type="checkbox" name="folders" value="{{ f }}" {% if f in cfg.folders.split(',') %}checked{% endif %}> {{ f }}</label>
+        {% endfor %}
+      </div>
+      <label>Limit rychlosti uploadu (KB/s, 0 = bez limitu) <input type="number" name="rate_kbps" min="0" value="{{ cfg.rate_kbps }}"></label>
+      <label>Přepnout do AP, když není domácí Wi-Fi (s, 0 = nikdy) <input type="number" name="ap_fallback_sec" min="0" value="{{ cfg.ap_fallback_sec }}"></label>
+      <label>Z AP zkusit znovu domácí Wi-Fi po (s, 0 = nikdy) <input type="number" name="sta_retry_sec" min="0" value="{{ cfg.sta_retry_sec }}"></label>
+      <label>Interval dotazování serveru (s) <input type="number" name="poll_sec" min="10" value="{{ cfg.poll_sec }}"></label>
+      <label>Minimální stáří souboru před uploadem (s) <input type="number" name="min_age_sec" min="0" value="{{ cfg.min_age_sec }}"></label>
+      <label class="check"><input type="checkbox" name="delete_after_upload" {% if cfg.delete_after_upload %}checked{% endif %}> Po úspěšném uploadu na Drive smazat soubor z kamery</label>
+      {% if is_admin %}<button>Uložit</button>{% endif %}
+      </fieldset>
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Záznamy</h2>
+  <form method="get" class="filters">
+    <select name="where">
+      <option value="camera" {% if filters.where == 'camera' %}selected{% endif %}>V kameře</option>
+      <option value="all" {% if filters.where == 'all' %}selected{% endif %}>Vše</option>
+      <option value="gone" {% if filters.where == 'gone' %}selected{% endif %}>Už nejsou v kameře</option>
+    </select>
+    <select name="folder">
+      <option value="">Všechny složky</option>
+      {% for f in CAMERA_FOLDERS %}<option {% if filters.folder == f %}selected{% endif %}>{{ f }}</option>{% endfor %}
+    </select>
+    <select name="state">
+      <option value="">Všechny stavy</option>
+      {% for k, v in STATE_FILTERS.items() %}<option value="{{ k }}" {% if filters.state == k %}selected{% endif %}>{{ v[0] }}</option>{% endfor %}
+    </select>
+    <label>od <input type="date" name="from" value="{{ filters.from }}"></label>
+    <label>do <input type="date" name="to" value="{{ filters.to }}"></label>
+    <button class="secondary">Filtrovat</button>
+    <span class="muted">{{ total }} záznamů</span>
+  </form>
+
+  <form method="post" action="/devices/{{ dev.id }}/files" id="files">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="next" value="{{ here }}">
+    {% if is_admin %}
+    <div class="actions sticky">
+      <button name="action" value="upload">Nahrát vybrané</button>
+      <button name="action" value="unrequest" class="secondary">Zrušit žádost o upload</button>
+      <button name="action" value="retry" class="secondary">Znovu na Drive</button>
+      <button name="action" value="delete" class="danger"
+              onclick="return confirm('Smazat vybrané záznamy z SD karty v kameře? Nejde to vrátit.')">Smazat z kamery</button>
+    </div>
+    {% endif %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        {% if is_admin %}<th><input type="checkbox" onclick="document.querySelectorAll('#files input[name=ids]').forEach(c => c.checked = this.checked)"></th>{% endif %}
+        <th>Datum záznamu</th><th>Složka</th><th>Soubor</th><th>Velikost</th><th>Stav</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="{% if not r.present %}gone{% endif %}">
+          {% if is_admin %}<td><input type="checkbox" name="ids" value="{{ r.id }}"></td>{% endif %}
+          <td class="nowrap">{{ r.recorded_at | dt }}</td>
+          <td>{{ r.folder }}</td>
+          <td class="mono">{{ r.path.split('/', 1)[1] }}</td>
+          <td class="nowrap">{{ r.size | size }}</td>
+          <td class="states">
+            {% if r.present %}<span class="badge">v kameře</span>{% else %}<span class="badge muted-badge">smazáno v kameře</span>{% endif %}
+            {% if r.requested and r.state in ('camera', 'uploading') %}<span class="badge st-requested">vyžádáno pro upload</span>{% endif %}
+            {% if r.state == 'uploading' %}<span class="badge st-uploading">nahrává se z kamery {{ progress.get(r.id, 0) }} %</span>{% endif %}
+            {% if r.local %}<span class="badge st-server">na serveru</span>{% endif %}
+            {% if r.state == 'received' %}<span class="badge st-uploading">čeká na Google Drive</span>{% endif %}
+            {% if r.state == 'drive_uploading' %}<span class="badge st-uploading">nahrává se na Google Drive</span>{% endif %}
+            {% if r.state == 'on_drive' %}<span class="badge st-drive">na Google Drive</span>{% endif %}
+            {% if r.path in pending_delete %}<span class="badge blocked">maže se z kamery</span>{% endif %}
+            {% if r.error and r.state == 'received' %}<div class="err" title="{{ r.error }}">chyba: {{ r.error[:80] }}</div>{% endif %}
+            {% if r.drive_path %}<div class="muted mono small">{{ r.drive_path }}</div>{% endif %}
+          </td>
+          <td class="nowrap">
+            {% if r.local or r.state == 'on_drive' %}
+              <a href="/files/{{ r.id }}/download?inline=1" target="_blank">přehrát</a> ·
+              <a href="/files/{{ r.id }}/download">stáhnout</a>
+              <div class="muted small">{{ 'ze serveru' if r.local else 'z Google Drive' }}</div>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="muted">Žádné záznamy.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </form>
+  {% if pages > 1 %}
+  <p class="pager">
+    {% if page > 1 %}<a href="/devices/{{ dev.id }}?{{ filters | urlencode }}&page={{ page - 1 }}">« novější</a>{% endif %}
+    strana {{ page }} / {{ pages }}
+    {% if page < pages %}<a href="/devices/{{ dev.id }}?{{ filters | urlencode }}&page={{ page + 1 }}">starší »</a>{% endif %}
+  </p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Příkazy pro kameru</h2>
+  {% if cmds %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Vytvořeno</th><th>Příkaz</th><th>Soubor</th><th>Kdo</th><th>Stav</th><th></th></tr></thead>
+    <tbody>
+    {% for c in cmds %}
+      <tr>
+        <td class="nowrap">{{ c.created_at | dt }}</td>
+        <td>{{ {'delete': 'smazat', 'ap': 'přepnout do AP'}.get(c.type, c.type) }}</td>
+        <td class="mono">{{ c.path ~ ' min' if c.type == 'ap' else c.path }}</td>
+        <td>{{ c.created_by }}</td>
+        <td>{{ {'pending': 'čeká', 'sent': 'odesláno', 'done': 'hotovo', 'failed': 'selhalo'}[c.status] }}{% if c.result %} <span class="muted">({{ c.result }})</span>{% endif %}</td>
+        <td>
+          {% if is_admin and c.status in ('pending', 'sent') %}
+          <form method="post" action="/commands/{{ c.id }}/cancel" class="inline">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">zrušit</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="muted">Žádné příkazy.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Log z kamery</h2>
+  <pre class="log">{{ dev.log_tail or 'Kamera zatím neposlala log.' }}</pre>
+</section>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Kamery{% endblock %}
+{% block content %}
+<h1>Kamery</h1>
+{% if not drive_remote %}
+<p class="warn">Google Drive není připojený, soubory zůstávají na serveru (v rámci limitu místa).
+{% if user.role == 'admin' %}<a href="/settings">Připojit v Nastavení</a>{% endif %}</p>
+{% endif %}
+{% if storage.full %}
+<p class="warn">Limit místa na serveru je plný souborů čekajících na Google Drive. Kamery teď nic dalšího nestahují.</p>
+{% endif %}
+<section class="card storage">
+  <strong>Úložiště na serveru:</strong>
+  {{ storage.total | size }}{% if storage.quota %} z {{ storage.quota | size }} ({{ storage.percent }} %){% else %} (bez limitu){% endif %}
+  · čeká na Drive {{ storage.pending | size }} · kopie už nahraných {{ storage.cached | size }}
+  · volno na disku {{ storage.disk_free | size }}
+  {% if storage.quota %}<div class="bar"><span style="width: {{ storage.percent }}%"></span></div>{% endif %}
+  {% if drive_remote %}<div class="muted small">Cíl: {{ drive_remote }}</div>{% endif %}
+</section>
+{% if not devices %}
+<p class="muted">Zatím se neozvala žádná kamera. Nahraj na SD kartu uploader a nastav <code>upload_url</code> v <code>config.txt</code>.</p>
+{% endif %}
+<div class="grid">
+{% for d in devices %}
+  <section class="card {% if d.status == 'pending' %}pending{% elif d.status == 'blocked' %}blocked{% endif %}">
+    <h2><a href="/devices/{{ d.id }}">{{ d.name }}</a></h2>
+    <p class="muted mono">{{ d.uid }}</p>
+    {% if d.status == 'pending' %}
+      <p><strong>Čeká na schválení.</strong> Pokus o připojení z {{ d.last_ip or '?' }}, {{ d.last_seen | ago }}.</p>
+      {% set others = devices | rejectattr('id', 'equalto', d.id) | rejectattr('status', 'equalto', 'pending') | list %}
+      {% if user.role == 'admin' and others %}
+      <form method="post" action="/devices/{{ d.id }}/merge" class="row"
+            onsubmit="return confirm('Převést tuto novou identitu na vybranou kameru? Kamera si ponechá název, nastavení a historii souborů.')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <select name="target_id">
+          {% for o in others %}<option value="{{ o.id }}">{{ o.name }} ({{ o.uid[:8] }}…)</option>{% endfor %}
+        </select>
+        <button class="secondary">Je to stará kamera (nová SD / smazaný klíč)</button>
+      </form>
+      {% endif %}
+    {% elif d.status == 'blocked' %}
+      <p><strong>Zablokovaná.</strong></p>
+    {% endif %}
+    <dl>
+      <dt>Naposledy online</dt><dd title="{{ d.last_seen | dt }}">{{ d.last_seen | ago }} ({{ d.wifi_mode or '?' }}, {{ d.last_ip or '?' }})</dd>
+      <dt>SD karta</dt><dd>{% if d.sd_total_kb %}volno {{ (d.sd_free_kb * 1024) | size }} z {{ (d.sd_total_kb * 1024) | size }}{% else %}–{% endif %}</dd>
+      <dt>Soubory v kameře</dt><dd>{{ d.n_present }}</dd>
+      <dt>Na serveru / na Drive</dt><dd>{{ d.n_server }} / {{ d.n_drive }}</dd>
+      <dt>Čekající příkazy</dt><dd>{{ d.n_cmds }}</dd>
+    </dl>
+    {% if user.role == 'admin' %}
+    <div class="actions">
+      {% if d.status != 'approved' %}
+      <form method="post" action="/devices/{{ d.id }}/status" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="status" value="approved">
+        <button>Schválit</button>
+      </form>
+      {% endif %}
+      {% if d.status != 'blocked' %}
+      <form method="post" action="/devices/{{ d.id }}/status" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="status" value="blocked">
+        <button class="secondary">Zablokovat</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/devices/{{ d.id }}/delete" class="inline"
+            data-msg="Odebrat kameru {{ d.name }} včetně historie a souborů na serveru?" onsubmit="return confirm(this.dataset.msg)">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="danger">Odebrat</button>
+      </form>
+    </div>
+    {% endif %}
+  </section>
+{% endfor %}
+</div>
+{% endblock %}

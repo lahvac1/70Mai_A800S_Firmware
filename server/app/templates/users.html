@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Uživatelé{% endblock %}
+{% block content %}
+<h1>Uživatelé</h1>
+<p class="muted"><strong>admin</strong> spravuje kamery, uživatele a maže záznamy. <strong>viewer</strong> vidí kamery a záznamy a může je stahovat.
+Upozornění si každý nastavuje sám na svém profilu.</p>
+
+<form method="post" action="/invitations" class="card">
+  <h2>Pozvat uživatele</h2>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="filters">
+    <input name="email" type="email" placeholder="e-mail" required>
+    <select name="role"><option value="viewer">viewer</option><option value="admin">admin</option></select>
+    <button>Poslat pozvánku</button>
+  </div>
+  <p class="muted small">Přijde mu e-mail s odkazem, kde si zvolí jméno, heslo a upozornění. Odkaz platí {{ invite_ttl_hours }} h.
+  {% if not mail_enabled %}<br><strong>SMTP není nastavené</strong>, odkaz se zobrazí tady a pošleš ho ručně.{% endif %}</p>
+</form>
+
+{% if invites %}
+<section class="card">
+  <h2>Čekající pozvánky</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>E-mail</th><th>Role</th><th>Pozval</th><th>Platí do</th><th></th></tr></thead>
+    <tbody>
+    {% for i in invites %}
+      <tr>
+        <td>{{ i.email }}</td>
+        <td>{{ i.role }}</td>
+        <td>{{ i.created_by }}</td>
+        <td class="nowrap">{% if i.expires_at < now %}<span class="badge blocked">vypršela</span>{% else %}{{ i.expires_at | dt }}{% endif %}</td>
+        <td class="nowrap">
+          <form method="post" action="/invitations/{{ i.id }}/resend" class="inline">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary">Poslat znovu</button>
+          </form>
+          <form method="post" action="/invitations/{{ i.id }}/delete" class="inline">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger">Zrušit</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Účty</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Jméno</th><th>E-mail</th><th>Upozornění</th><th>Vytvořen</th><th>Role / heslo</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr>
+        <td>{{ u.username }}{% if u.id == user.id %} <span class="muted">(ty)</span>{% endif %}</td>
+        <td>{{ u.email or '–' }}</td>
+        <td class="small">
+          {% set n = [] %}
+          {% if u.notify_uploads %}{% set _ = n.append('uploady') %}{% endif %}
+          {% if u.notify_errors %}{% set _ = n.append('chyby') %}{% endif %}
+          {% if u.notify_devices %}{% set _ = n.append('nové kamery') %}{% endif %}
+          {{ n | join(', ') if n else '–' }}
+        </td>
+        <td class="nowrap">{{ u.created_at | dt }}</td>
+        <td>
+          <form method="post" action="/users/{{ u.id }}/update" class="inline row">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <select name="role">
+              <option value="viewer" {% if u.role == 'viewer' %}selected{% endif %}>viewer</option>
+              <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>admin</option>
+            </select>
+            <input type="password" name="password" placeholder="nové heslo (nepovinné)" autocomplete="new-password">
+            <button class="secondary">Uložit</button>
+          </form>
+        </td>
+        <td>
+          {% if u.id != user.id %}
+          <form method="post" action="/users/{{ u.id }}/delete" class="inline"
+                data-msg="Smazat uživatele {{ u.username }}?" onsubmit="return confirm(this.dataset.msg)">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><button class="danger">Smazat</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Nastavení{% if picker_available %}
+<script src="https://apis.google.com/js/api.js"></script>
+<script>
+document.getElementById("pick-folder").addEventListener("click", async () => {
+  const resp = await fetch("/settings/google/picker-token");
+  const cfg = await resp.json();
+  if (!resp.ok) { alert("Nepodařilo se získat token: " + (cfg.error || resp.status)); return; }
+  gapi.load("picker", () => {
+    const P = google.picker;
+    const folders = (owned) => new P.DocsView(P.ViewId.FOLDERS)
+      .setIncludeFolders(true).setSelectFolderEnabled(true)
+      .setMimeTypes("application/vnd.google-apps.folder").setOwnedByMe(owned);
+    const drives = new P.DocsView(P.ViewId.FOLDERS)
+      .setIncludeFolders(true).setSelectFolderEnabled(true)
+      .setMimeTypes("application/vnd.google-apps.folder").setEnableDrives(true);
+    new P.PickerBuilder()
+      .setTitle("Vyber složku pro videa z kamery")
+      .addView(folders(true).setLabel("Můj disk"))
+      .addView(folders(false).setLabel("Sdíleno se mnou"))
+      .addView(drives.setLabel("Sdílené disky"))
+      .setOAuthToken(cfg.token)
+      .setDeveloperKey(cfg.api_key)
+      .setAppId(cfg.app_id)
+      .setLocale("cs")
+      .setCallback((data) => {
+        if (data.action !== P.Action.PICKED) return;
+        const doc = data.docs[0];
+        const form = document.getElementById("pick-form");
+        form.folder_id.value = doc.id;
+        form.folder_name.value = doc.name;
+        form.submit();
+      })
+      .build()
+      .setVisible(true);
+  });
+});
+</script>
+{% endif %}
+{% endblock %}
+{% block content %}
+<h1>Nastavení</h1>
+
+<div class="grid two">
+<section class="card">
+  <h2>Google Drive</h2>
+  {% if custom_remote %}
+    <p>Cíl je pevně nastavený v <code>.env</code>: <code>{{ custom_remote }}</code>.</p>
+  {% elif google_connected %}
+    <p><span class="badge approved">připojeno</span> {{ s.google_account or 'Google účet' }}</p>
+    <p>Cílová složka:
+      {% if s.drive_folder_id %}
+        <a href="https://drive.google.com/drive/folders/{{ s.drive_folder_id }}" target="_blank" rel="noopener"><strong>{{ s.drive_folder_name or s.drive_folder_id }}</strong></a>{% if s.drive_folder %} / {{ s.drive_folder }}{% endif %}
+      {% else %}
+        <strong>Můj disk / {{ s.drive_folder }}</strong>
+      {% endif %}
+    </p>
+    <p class="muted small">Uvnitř se tvoří &lt;kamera&gt;/&lt;Event|Normal&gt;/&lt;datum&gt;/</p>
+    {% if picker_available %}
+    <div class="actions">
+      <button type="button" id="pick-folder">Vybrat složku na Google Drive</button>
+      {% if s.drive_folder_id %}
+      <form method="post" action="/settings/google/folder" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="folder_id" value="">
+        <button class="secondary">Zpět do Můj disk</button>
+      </form>
+      {% endif %}
+    </div>
+    <form method="post" action="/settings/google/folder" id="pick-form" hidden>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="folder_id"><input type="hidden" name="folder_name">
+      <input type="hidden" name="subfolder" value="">
+    </form>
+    <p class="muted small">Umí i složky sdílené s tebou a sdílené disky. Soubory nahrané do cizí složky
+      vlastníš ty a počítají se do tvého místa na Google Drive.</p>
+    {% elif picker_missing_key %}
+    <p class="muted small">Pro výběr složky přes Google Picker doplň <code>GOOGLE_API_KEY</code> do <code>.env</code>.</p>
+    {% endif %}
+    <div class="actions">
+      <form method="post" action="/settings/google/check" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="secondary">Ověřit / vytvořit složku</button>
+      </form>
+      {% if oauth_available %}<a class="btn secondary" href="/settings/google/connect">Připojit jiný účet</a>{% endif %}
+      <form method="post" action="/settings/google/disconnect" class="inline"
+            onsubmit="return confirm('Odpojit Google Drive? Nové soubory zůstanou na serveru.')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="danger">Odpojit</button>
+      </form>
+    </div>
+  {% else %}
+    <p><span class="badge pending">nepřipojeno</span> Soubory zůstávají na serveru, dokud Drive nepřipojíš.</p>
+    {% if oauth_available %}
+      <p><a class="btn" href="/settings/google/connect">Připojit Google účet</a></p>
+      <p class="muted small">Otevře se přihlášení Google, potvrdíš přístup a vrátíš se sem.</p>
+    {% else %}
+      <p class="muted small">Připojení jedním kliknutím vyžaduje vlastního OAuth klienta
+        (<code>GOOGLE_CLIENT_ID</code> a <code>GOOGLE_CLIENT_SECRET</code> v <code>.env</code>, redirect URI
+        <code>{{ redirect_uri }}</code>). Postup je v README.</p>
+    {% endif %}
+  {% endif %}
+
+  {% if not custom_remote %}
+  <details>
+    <summary>Připojit vložením tokenu z rclone</summary>
+    <p class="muted small">Na počítači s prohlížečem spusť <code>rclone authorize "drive"</code>, přihlas se
+      a celý vypsaný token vlož sem.</p>
+    <form method="post" action="/settings/google/token">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <textarea name="token" placeholder='{"access_token":"...","refresh_token":"...",...}' required></textarea>
+      <div class="actions"><button class="secondary">Uložit token</button></div>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+<form method="post" action="/settings" class="card cfg">
+  <h2>Ukládání</h2>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% if s.drive_folder_id %}
+  <label>Podsložka ve vybrané složce „{{ s.drive_folder_name }}“ (nepovinné)
+    <input name="drive_folder" value="{{ s.drive_folder }}" {% if custom_remote %}disabled{% endif %}>
+  </label>
+  {% else %}
+  <label>Složka v Můj disk
+    <input name="drive_folder" value="{{ s.drive_folder }}" required {% if custom_remote %}disabled{% endif %}>
+  </label>
+  {% endif %}
+  <p class="muted small">Např. <code>70mai</code> nebo <code>Auto/Dashcam</code>. Vytvoří se sama. Změna platí pro nově nahrané soubory.</p>
+
+  <label>Limit místa na serveru (GB, 0 = bez limitu)
+    <input name="storage_quota_gb" type="number" min="0" step="0.5" value="{{ s.storage_quota_gb }}">
+  </label>
+  <p class="muted small">Když soubory čekající na Google Drive zaberou tolik místa, server přestane kamerám přidělovat
+    další uploady, dokud se něco neodešle. Zbytek počká v kameře.</p>
+
+  <label class="check block"><input type="checkbox" name="keep_local_copy" {% if s.keep_local_copy == '1' %}checked{% endif %}>
+    Nechávat kopii na serveru i po nahrání na Google Drive</label>
+  <p class="muted small">Kopie zrychlí stahování z webu. Při překročení limitu se nejstarší kopie mažou (na Drive zůstávají).</p>
+  <button>Uložit</button>
+
+  <h2 style="margin-top:1.2em">Využití</h2>
+  <dl>
+    <dt>Čeká na Google Drive</dt><dd>{{ storage.pending | size }}</dd>
+    <dt>Kopie už nahraných</dt><dd>{{ storage.cached | size }}</dd>
+    <dt>Celkem</dt><dd>{{ storage.total | size }}{% if storage.quota %} z {{ storage.quota | size }} ({{ storage.percent }} %){% endif %}</dd>
+    <dt>Volno na disku</dt><dd>{{ storage.disk_free | size }}</dd>
+  </dl>
+  {% if storage.quota %}<div class="bar"><span style="width: {{ storage.percent }}%"></span></div>{% endif %}
+</form>
+</div>
+{% if picker_available %}
+<script src="https://apis.google.com/js/api.js"></script>
+<script>
+document.getElementById("pick-folder").addEventListener("click", async () => {
+  const resp = await fetch("/settings/google/picker-token");
+  const cfg = await resp.json();
+  if (!resp.ok) { alert("Nepodařilo se získat token: " + (cfg.error || resp.status)); return; }
+  gapi.load("picker", () => {
+    const P = google.picker;
+    const folders = (owned) => new P.DocsView(P.ViewId.FOLDERS)
+      .setIncludeFolders(true).setSelectFolderEnabled(true)
+      .setMimeTypes("application/vnd.google-apps.folder").setOwnedByMe(owned);
+    const drives = new P.DocsView(P.ViewId.FOLDERS)
+      .setIncludeFolders(true).setSelectFolderEnabled(true)
+      .setMimeTypes("application/vnd.google-apps.folder").setEnableDrives(true);
+    new P.PickerBuilder()
+      .setTitle("Vyber složku pro videa z kamery")
+      .addView(folders(true).setLabel("Můj disk"))
+      .addView(folders(false).setLabel("Sdíleno se mnou"))
+      .addView(drives.setLabel("Sdílené disky"))
+      .setOAuthToken(cfg.token)
+      .setDeveloperKey(cfg.api_key)
+      .setAppId(cfg.app_id)
+      .setLocale("cs")
+      .setCallback((data) => {
+        if (data.action !== P.Action.PICKED) return;
+        const doc = data.docs[0];
+        const form = document.getElementById("pick-form");
+        form.folder_id.value = doc.id;
+        form.folder_name.value = doc.name;
+        form.submit();
+      })
+      .build()
+      .setVisible(true);
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

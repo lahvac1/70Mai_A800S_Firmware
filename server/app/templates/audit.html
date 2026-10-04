@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Log{% endblock %}
+{% block content %}
+<h1>Log akcí</h1>
+<section class="card">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Čas</th><th>Kdo</th><th>Akce</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td class="nowrap">{{ r.ts | dt }}</td><td>{{ r.actor }}</td><td>{{ r.action }}</td><td class="small">{{ r.detail }}</td></tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">Prázdné.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

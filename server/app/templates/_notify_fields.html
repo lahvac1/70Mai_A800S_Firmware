@@ -1,0 +1,11 @@
+{# expects: prefs (row/dict with notify_* or None for defaults), is_admin #}
+{% set p = prefs if prefs is defined and prefs else user %}
+{% set admin_role = is_admin if is_admin is defined else (user and user.role == 'admin') %}
+<label class="check block"><input type="checkbox" name="notify_uploads" {% if not p or p.notify_uploads %}checked{% endif %}>
+  Souhrn nahraných videí na Google Drive <span class="muted small">(jeden e-mail po dokončení fronty)</span></label>
+<label class="check block"><input type="checkbox" name="notify_errors" {% if not p or p.notify_errors %}checked{% endif %}>
+  Chyby uploadu na Google Drive</label>
+{% if admin_role %}
+<label class="check block"><input type="checkbox" name="notify_devices" {% if not p or p.notify_devices %}checked{% endif %}>
+  Nová kamera čeká na schválení</label>
+{% endif %}

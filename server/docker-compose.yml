@@ -1,0 +1,26 @@
+services:
+  app:
+    build: .
+    image: dashcam-upload:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # Cloudflare (proxy or tunnel) terminates HTTPS in front of this port.
+      - "${HTTP_PORT:-8000}:8000"
+    volumes:
+      # SQLite DB + videos waiting for Google Drive (needs space for the upload backlog).
+      - ${DATA_PATH:-./data}:/data
+      # rclone.conf with the Google Drive token.
+      - ${RCLONE_CONFIG_PATH:-./rclone}:/config/rclone
+
+  # Optional: Cloudflare Tunnel instead of an open port.
+  # Start with: docker compose --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - app

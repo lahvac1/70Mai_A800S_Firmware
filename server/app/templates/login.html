@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Přihlášení{% endblock %}
+{% block content %}
+<form method="post" action="/login" class="card narrow">
+  <h1>Přihlášení</h1>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Jméno <input name="username" autocomplete="username" required autofocus></label>
+  <label>Heslo <input name="password" type="password" autocomplete="current-password" required></label>
+  <button>Přihlásit</button>
+</form>
+{% endblock %}

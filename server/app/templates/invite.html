@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Registrace{% endblock %}
+{% block content %}
+{% if invalid %}
+<section class="card narrow">
+  <h1>Pozvánka neplatí</h1>
+  <p>Odkaz vypršel, už byl použitý, nebo pozvánku admin zrušil. Požádej o novou.</p>
+  <p><a href="/login">Přihlášení</a></p>
+</section>
+{% else %}
+<form method="post" action="/invite/{{ token }}" class="card narrow">
+  <h1>Založení účtu</h1>
+  <p class="muted">Pozvánka pro <strong>{{ inv.email }}</strong>, role {{ inv.role }}. Pozval {{ inv.created_by }}.</p>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Přihlašovací jméno <input name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9._\-]+" autocomplete="username"></label>
+  <label>E-mail <input name="email" type="email" value="{{ inv.email }}" required autocomplete="email"></label>
+  <label>Heslo (min. 8 znaků) <input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+  <label>Heslo znovu <input name="password2" type="password" minlength="8" required autocomplete="new-password"></label>
+  <p class="muted small">Posílat mi e-mailem (změníš kdykoli na profilu):</p>
+  {% set prefs = None %}{% set is_admin = inv.role == 'admin' %}
+  {% include "_notify_fields.html" %}
+  <div class="actions"><button>Vytvořit účet</button></div>
+</form>
+{% endif %}
+{% endblock %}

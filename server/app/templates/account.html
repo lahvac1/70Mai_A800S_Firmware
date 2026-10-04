@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Profil{% endblock %}
+{% block content %}
+<h1>Profil</h1>
+<p class="muted">Přihlášen jako <strong>{{ user.username }}</strong> ({{ user.role }}).</p>
+
+<div class="grid two">
+<form method="post" action="/account/profile" class="card">
+  <h2>E-mail a upozornění</h2>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>E-mail <input name="email" type="email" value="{{ user.email or '' }}" autocomplete="email"></label>
+  <p class="muted small">Posílat mi e-mailem:</p>
+  {% include "_notify_fields.html" %}
+  {% if not mail_enabled %}<p class="warn small">SMTP na serveru zatím není nastavené, e-maily se neodesílají.</p>{% endif %}
+  <div class="actions">
+    <button>Uložit</button>
+  </div>
+</form>
+
+<form method="post" action="/account/password" class="card">
+  <h2>Změna hesla</h2>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Současné heslo <input name="old" type="password" required autocomplete="current-password"></label>
+  <label>Nové heslo (min. 8 znaků) <input name="new" type="password" minlength="8" required autocomplete="new-password"></label>
+  <button>Změnit heslo</button>
+</form>
+</div>
+
+{% if mail_enabled and user.email %}
+<form method="post" action="/account/test-mail" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button class="secondary">Poslat testovací e-mail na {{ user.email }}</button>
+</form>
+{% endif %}
+{% endblock %}

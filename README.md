@@ -16,6 +16,7 @@ Features available:
 - Autorun scripting
 - ADAS sounds changed to short beeps
 - Config.txt for device setup
+- Cloud uploader: automatic upload to your own server and Google Drive over home Wi-Fi (see below)
 
 Wifi enabled by default
 Default Wifi SSID: 70mai_A800S
@@ -67,6 +68,21 @@ This is new stable client mode!
 Your device will act as wifi client in your own Wi-Fi network
 Connect it to your car hotspot or home network
 Simple app will be available on my roadmap soon
+
+# Cloud uploader
+
+When the camera connects to your home Wi-Fi (STA mode) it uploads recordings
+(by default only `Event`) to your own server, which moves them to Google Drive.
+Away from home it falls back to AP mode, so the phone app keeps working.
+Runs from the SD card via autorun, no firmware rebuild needed.
+
+- Camera side: [Uploader/README.md](Uploader/README.md)
+- Server (Docker): [server/README.md](server/README.md)
+
+```
+upload_enable=1
+upload_url=https://your.server
+```
 
 # Fonts update
 
